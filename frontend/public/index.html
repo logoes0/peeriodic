@@ -1,1 +1,40 @@
 
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Real-Time Text Editor - Sign In</title>
+  <style>
+    body {
+      font-family: sans-serif;
+      display: flex;
+      height: 100vh;
+      justify-content: center;
+      align-items: center;
+      background-color: #f4f4f4;
+    }
+    button {
+      padding: 12px 24px;
+      font-size: 16px;
+      cursor: pointer;
+      border: none;
+      border-radius: 6px;
+      background-color: #4285F4;
+      color: white;
+    }
+  </style>
+</head>
+<body>
+
+  <button id="signInBtn">Sign In with Firebase</button>
+
+  <script>
+    document.getElementById("signInBtn").addEventListener("click", () => {
+      alert("This will trigger Firebase Auth (to be implemented)");
+      // Example: firebase.auth().signInWithPopup(new firebase.auth.GoogleAuthProvider())
+    });
+  </script>
+
+</body>
+</html>
