@@ -1,37 +1,48 @@
 package main
 
 import (
-	"encoding/json"
 	"fmt"
 	"log"
-	"net/http"
 	"os"
 
-	"github.com/go-chi/chi/v5"
+	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/websocket/v2"
 	"github.com/joho/godotenv"
+	"github.com/logoes0/peeriodic.git/server"
 )
 
 func main() {
 	_ = godotenv.Load()
 
 	port := os.Getenv("PORT")
-	if port == "" {
-		port = "8080"
+
+	authClient, err := server.InitFirebaseAuth()
+	if err != nil {
+		log.Fatalf("Failed to initialize Firebase: %v", err)
 	}
 
-	r := chi.NewRouter()
+	appFiber := fiber.New()
 
-	r.Get("/start", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-
-		json.NewEncoder(w).Encode(map[string]string{
+	// basic api endpoint to check working
+	appFiber.Get("/start", func(c *fiber.Ctx) error {
+		return c.Status(fiber.StatusOK).JSON(fiber.Map{
 			"status":  "success",
 			"message": "initial run successful",
 		})
 	})
 
-	local_url := "http://localhost:" + port
-	fmt.Println("🚀 Server running on:", local_url)
-	log.Fatal(http.ListenAndServe(":"+port, r))
+	// middleware to upgrade only WebSocket requests
+	appFiber.Use("/ws", func(c *fiber.Ctx) error {
+		if websocket.IsWebSocketUpgrade(c) {
+			return c.Next()
+		}
+		return fiber.ErrUpgradeRequired
+	})
+
+	// websocket endpoint
+	appFiber.Get("/ws", websocket.New(server.HandleWebSocket(authClient)))
+
+	localURL := "http://localhost:" + port
+	fmt.Println("🚀 Server running on:", localURL)
+	log.Fatal(appFiber.Listen(":" + port))
 }
