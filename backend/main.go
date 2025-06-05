@@ -14,7 +14,7 @@ import (
 func main() {
 	_ = godotenv.Load()
 
-	port := os.Getenv("PORT")
+	port := os.Getenv("BE_PORT")
 
 	authClient, err := server.InitFirebaseAuth()
 	if err != nil {
