@@ -10,7 +10,7 @@ function App() {
       <Routes>
         <Route path="/" element={<SignIn />} />
         <Route path="/signup" element={<SignUp />} />
-        <Route path="/dashboard" element={<TextEditor />} /> {/* ✅ Editor directly */}
+        <Route path="/texteditor" element={<TextEditor />} /> {/* ✅ Editor directly */}
       </Routes>
     </Router>
   );
