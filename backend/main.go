@@ -34,12 +34,13 @@ func main() {
 	// middleware to upgrade only WebSocket requests
 	appFiber.Use("/ws", func(c *fiber.Ctx) error {
 		if websocket.IsWebSocketUpgrade(c) {
+			// Store token in locals (not entire context)
+			c.Locals("token", c.Query("token"))
 			return c.Next()
 		}
 		return fiber.ErrUpgradeRequired
 	})
 
-	// websocket endpoint
 	appFiber.Get("/ws", websocket.New(server.HandleWebSocket(authClient)))
 
 	localURL := "http://localhost:" + port

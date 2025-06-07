@@ -12,6 +12,9 @@ RUN go build -o main .
 # Stage 2: create a clean image
 FROM debian:bookworm-slim
 
+# ✅ Install root certificates for HTTPS (required for Firebase)
+RUN apt-get update && apt-get install -y ca-certificates && rm -rf /var/lib/apt/lists/*
+
 WORKDIR /app
 
 COPY keys /app/keys

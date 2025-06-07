@@ -28,3 +28,7 @@ restart:
 # Clean all unused Docker resources
 clean:
 	docker system prune -f
+
+# Rebuild and restart only backend
+restart-backend:
+	docker compose build backend && docker compose restart backend

@@ -1,36 +1,19 @@
 // src/App.js
-import React, { useEffect, useState } from "react";
-import { onAuthStateChanged } from "firebase/auth";
-import { auth } from "./firebase";
-import SignIn from "./SignIn";
+import React from "react";
+import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
+import SignIn from "./pages/SignIn";
+import SignUp from "./pages/SignUp";
+import Dashboard from "./pages/Dashboard";
 
 function App() {
-  const [user, setUser] = useState(null);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
-      setUser(user);
-      setLoading(false);
-    });
-
-    return () => unsubscribe();
-  }, []);
-
-  if (loading) return <div>Loading...</div>;
-
-  if (!user) return <SignIn />;
-
   return (
-    <div style={{ padding: "2rem" }}>
-      <h2>Welcome, {user.email}</h2>
-      <button
-        onClick={() => auth.signOut()}
-        style={{ marginTop: "1rem", padding: "10px 20px", cursor: "pointer" }}
-      >
-        Sign Out
-      </button>
-    </div>
+    <Router>
+      <Routes>
+        <Route path="/" element={<SignIn />} />
+        <Route path="/signup" element={<SignUp />} />
+        <Route path="/dashboard" element={<Dashboard />} />
+      </Routes>
+    </Router>
   );
 }
 
