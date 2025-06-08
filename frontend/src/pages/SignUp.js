@@ -12,7 +12,7 @@ const SignUp = () => {
   const handleSignUp = async () => {
     try {
       await createUserWithEmailAndPassword(auth, email, password);
-      navigate("/dashboard");
+      navigate("/texteditor");
     } catch (err) {
       setError("Signup failed: " + err.message);
     }
