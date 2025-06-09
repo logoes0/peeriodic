@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { useNavigate, Link } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { createUserWithEmailAndPassword } from "firebase/auth";
 import { auth } from "../firebase";
 
@@ -19,13 +19,78 @@ const SignUp = () => {
   };
 
   return (
-    <div style={{ padding: "2rem" }}>
-      <h2>Sign Up</h2>
-      <input type="email" placeholder="Email" value={email} onChange={(e) => setEmail(e.target.value)} /><br /><br />
-      <input type="password" placeholder="Password" value={password} onChange={(e) => setPassword(e.target.value)} /><br /><br />
-      <button onClick={handleSignUp}>Sign Up</button>
-      {error && <p style={{ color: "red" }}>{error}</p>}
-      <p>Already have an account? <Link to="/">Sign in</Link></p>
+    <div style={{
+      backgroundColor: "#536878",
+      height: "100vh",
+      display: "flex",
+      justifyContent: "center",
+      alignItems: "center",
+    }}>
+      <div style={{
+        display: "flex",
+        flexDirection: "column",
+        gap: "16px",
+        backgroundColor: "#2c2c3e",
+        padding: "32px",
+        borderRadius: "8px"
+      }}>
+        <input
+          type="email"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          placeholder="Email"
+          style={{
+            padding: "12px",
+            fontSize: "16px",
+            backgroundColor: "#000",
+            color: "#fff",
+            border: "1px solid #444",
+            borderRadius: "4px"
+          }}
+        />
+        <input
+          type="password"
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          placeholder="Password"
+          style={{
+            padding: "12px",
+            fontSize: "16px",
+            backgroundColor: "#000",
+            color: "#fff",
+            border: "1px solid #444",
+            borderRadius: "4px"
+          }}
+        />
+        <button
+          onClick={handleSignUp}
+          style={{
+            padding: "12px",
+            fontSize: "16px",
+            backgroundColor: "red",
+            color: "#fff",
+            border: "none",
+            borderRadius: "6px",
+            cursor: "pointer"
+          }}
+        >
+          Sign Up
+        </button>
+        <button
+          onClick={() => navigate("/")}
+          style={{
+            padding: "12px",
+            fontSize: "16px",
+            backgroundColor: "#666",
+            color: "#fff",
+            border: "none",
+            borderRadius: "6px",
+            cursor: "pointer"
+          }}
+        >
+          Back to Sign In
+        </button>
+      </div>
     </div>
   );
 };
