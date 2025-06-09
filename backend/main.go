@@ -41,6 +41,8 @@ func main() {
 		return fiber.ErrUpgradeRequired
 	})
 
+	appFiber.Get("/ws/:sessionId", websocket.New(server.HandleViewerWebSocket()))
+
 	appFiber.Get("/ws", websocket.New(server.HandleWebSocket(authClient)))
 
 	localURL := "http://localhost:" + port

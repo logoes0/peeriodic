@@ -1,11 +1,13 @@
 import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { auth } from "../firebase";
+import { v4 as uuidv4 } from "uuid";
 
 const TextEditorPage = () => {
   const navigate = useNavigate();
   const [socket, setSocket] = useState(null);
   const [text, setText] = useState("");
+  const [sessionId] = useState(uuidv4());
 
   useEffect(() => {
     const setup = async () => {
@@ -16,26 +18,26 @@ const TextEditorPage = () => {
       }
 
       const token = await user.getIdToken();
-      const ws = new WebSocket(`ws://localhost:8000/ws?token=${token}`);
+      const ws = new WebSocket(`ws://localhost:8000/ws?token=${token}&room=${sessionId}`);
       setSocket(ws);
 
       ws.onmessage = (event) => {
-        console.log("📩 Server says:", event.data);
+        console.log("\ud83d\udce9 Server says:", event.data);
       };
 
       ws.onerror = (e) => {
-        console.error("❌ WebSocket error:", e);
+        console.error("\u274c WebSocket error:", e);
       };
 
       ws.onclose = () => {
-        console.log("🛑 WebSocket closed");
+        console.log("\ud83d\udead WebSocket closed");
       };
 
       return () => ws.close();
     };
 
     setup();
-  }, [navigate]);
+  }, [navigate, sessionId]);
 
   const handleChange = (e) => {
     const val = e.target.value;
@@ -77,6 +79,13 @@ const TextEditorPage = () => {
         >
           Sign Out
         </button>
+      </div>
+
+      <div style={{ color: "white", margin: "0 20px", fontSize: "14px" }}>
+        Share this view-only link: 
+        <span style={{ marginLeft: "8px", background: "#000", color: "#0f0", padding: "4px 8px", borderRadius: "4px" }}>
+          {`${window.location.origin}/session/${sessionId}`}
+        </span>
       </div>
 
       {/* Text Editor */}
