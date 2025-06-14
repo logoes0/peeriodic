@@ -20,7 +20,7 @@ yarn-debug.log*
 yarn-error.log*
 
 # firebase-file
-**/peeriodic-auth-firebase-adminsdk-fbsvc-4a4166e392.json
+**/peeriodic-auth-firebase-adminsdk-fbsvc-b9d4e07576.json
 
 # local vsc
 .vscode
