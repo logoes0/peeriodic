@@ -6,8 +6,8 @@ import (
 	"os"
 
 	"github.com/gofiber/fiber/v2"
-	"github.com/gofiber/websocket/v2"
 	"github.com/joho/godotenv"
+	"github.com/logoes0/peeriodic.git/routes"
 	"github.com/logoes0/peeriodic.git/server"
 )
 
@@ -23,25 +23,8 @@ func main() {
 
 	appFiber := fiber.New()
 
-	// basic api endpoint to check working
-	appFiber.Get("/start", func(c *fiber.Ctx) error {
-		return c.Status(fiber.StatusOK).JSON(fiber.Map{
-			"status":  "success",
-			"message": "initial run successful",
-		})
-	})
-
-	// middleware to upgrade only WebSocket requests
-	appFiber.Use("/ws", func(c *fiber.Ctx) error {
-		if websocket.IsWebSocketUpgrade(c) {
-			// Store token in locals (not entire context)
-			c.Locals("token", c.Query("token"))
-			return c.Next()
-		}
-		return fiber.ErrUpgradeRequired
-	})
-
-	appFiber.Get("/ws", websocket.New(server.HandleWebSocket(authClient)))
+	// Setup all routes
+	routes.SetupRoutes(appFiber, authClient)
 
 	localURL := "http://localhost:" + port
 	fmt.Println("🚀 Server running on:", localURL)
