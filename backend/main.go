@@ -35,7 +35,6 @@ func handleConnections(w http.ResponseWriter, r *http.Request) {
 	clients[ws] = true
 	log.Println("New client connected")
 
-	// Send current document state to new client
 	ws.WriteJSON(Message{Type: "init", Data: document})
 
 	for {
