@@ -9,7 +9,7 @@ import (
 )
 
 var upgrader = websocket.Upgrader{
-	CheckOrigin: func(r *http.Request) bool { return true }, // Allow CORS
+	CheckOrigin: func(r *http.Request) bool { return true }, // Allow CORS just to maintain streak ik pathetic
 }
 
 var (
