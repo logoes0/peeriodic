@@ -55,6 +55,10 @@ function App() {
         window.location.href = `/editor?room=${roomId}`;
     };
 
+    const goBackToHome = () => {
+        window.location.href = '/';
+    };
+
     return (
         <div className="App">
             {!room ? (
@@ -65,6 +69,10 @@ function App() {
             ) : (
                 <div>
                     <h2>Room: {room}</h2>
+                    <button onClick={goBackToHome} style={{ marginBottom: '10px' }}>
+                        ⬅ Back to Home
+                    </button>
+                    <br />
                     <textarea
                         value={document}
                         onChange={handleChange}
