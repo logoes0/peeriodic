@@ -10,7 +10,7 @@ import (
 )
 
 var upgrader = websocket.Upgrader{
-	CheckOrigin: func(r *http.Request) bool { return true }, // Allow CORS just to maintain streak ik pathetic
+	CheckOrigin: func(r *http.Request) bool { return true }, // Allow CORS
 }
 
 var (
@@ -18,9 +18,17 @@ var (
 	broadcast = make(chan models.Message)
 	document  string
 	mu        sync.Mutex
+	rooms     = make(map[string]*models.Room)
+	roomsMu   sync.Mutex
 )
 
 func HandleConnections(w http.ResponseWriter, r *http.Request) {
+	roomID := r.URL.Query().Get("room")
+	if roomID == "" {
+		http.Error(w, "Missing room ID", http.StatusBadRequest)
+		return
+	}
+
 	ws, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		log.Printf("WebSocket Upgrade error: %v", err)
@@ -32,6 +40,19 @@ func HandleConnections(w http.ResponseWriter, r *http.Request) {
 	log.Println("New client connected")
 
 	ws.WriteJSON(models.Message{Type: "init", Data: document})
+
+	roomsMu.Lock()
+	room, exists := rooms[roomID]
+	if !exists {
+		room = &models.Room{Clients: make(map[*websocket.Conn]bool)}
+		rooms[roomID] = room
+	}
+	roomsMu.Unlock()
+
+	room.Mu.Lock()
+	room.Clients[ws] = true
+	ws.WriteJSON(models.Message{Type: "init", Data: room.Document})
+	room.Mu.Unlock()
 
 	for {
 		var msg models.Message
