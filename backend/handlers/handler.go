@@ -19,8 +19,6 @@ var upgrader = websocket.Upgrader{
 var (
 	clients   = make(map[*websocket.Conn]bool)
 	broadcast = make(chan models.Message)
-	document  string
-	mu        sync.Mutex
 	rooms     = make(map[string]*models.Room)
 	roomsMu   sync.Mutex
 )
@@ -39,38 +37,51 @@ func HandleConnections(w http.ResponseWriter, r *http.Request) {
 	}
 	defer ws.Close()
 
-	clients[ws] = true
-	log.Println("New client connected")
-
-	ws.WriteJSON(models.Message{Type: "init", Data: document})
-
+	// Get or create the room
 	roomsMu.Lock()
 	room, exists := rooms[roomID]
 	if !exists {
-		room = &models.Room{Clients: make(map[*websocket.Conn]bool)}
+		room = &models.Room{
+			Clients:  make(map[*websocket.Conn]bool),
+			Document: "", // initialize blank
+		}
 		rooms[roomID] = room
 	}
 	roomsMu.Unlock()
 
+	// Add client to the room
 	room.Mu.Lock()
 	room.Clients[ws] = true
+
+	// Send current document content to the new client
 	ws.WriteJSON(models.Message{Type: "init", Data: room.Document})
 	room.Mu.Unlock()
+
+	log.Println("New client connected to room:", roomID)
 
 	for {
 		var msg models.Message
 		err := ws.ReadJSON(&msg)
 		if err != nil {
 			log.Printf("Error reading JSON: %v", err)
-			delete(clients, ws)
+			room.Mu.Lock()
+			delete(room.Clients, ws)
+			room.Mu.Unlock()
 			break
 		}
 
 		if msg.Type == "update" {
-			mu.Lock()
-			document = msg.Data
-			mu.Unlock()
-			broadcast <- msg
+			// Store new content
+			room.Mu.Lock()
+			room.Document = msg.Data
+
+			// Broadcast to all clients in the room
+			for client := range room.Clients {
+				if client != ws { // optional: prevent echo
+					client.WriteJSON(msg)
+				}
+			}
+			room.Mu.Unlock()
 		}
 	}
 }

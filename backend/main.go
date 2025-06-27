@@ -7,12 +7,15 @@ import (
 	"net/http"
 	"os"
 
+	"github.com/joho/godotenv"
 	_ "github.com/lib/pq"
 	"github.com/logoes0/peeriodic.git/handlers"
 	"github.com/logoes0/peeriodic.git/routers"
 )
 
 func main() {
+	_ = godotenv.Load()
+
 	dbUser := os.Getenv("DB_USER")
 	dbName := os.Getenv("DB_NAME")
 	dbPort := os.Getenv("DB_PORT")

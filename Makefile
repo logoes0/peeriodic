@@ -7,3 +7,6 @@ run-be:
 # Start frontend (React/Vite)
 run-fe:
 	cd frontend/client && npm start
+
+mod:
+	cd backend && go mod tidy
