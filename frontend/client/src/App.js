@@ -9,10 +9,10 @@ function App() {
     const [editingRoomId, setEditingRoomId] = useState(null);
     const [editedRoomName, setEditedRoomName] = useState('');
     const [roomName, setRoomName] = useState('');
+    const [copiedRoomId, setCopiedRoomId] = useState(null);
     const params = new URLSearchParams(window.location.search);
     const room = params.get('room');
 
-    // Load saved rooms and match room name if inside one
     useEffect(() => {
         const savedRooms = JSON.parse(localStorage.getItem('myRooms') || '[]');
         setMyRooms(savedRooms);
@@ -24,7 +24,6 @@ function App() {
         }
     }, []);
 
-    // WebSocket setup
     useEffect(() => {
         if (!room) return;
 
@@ -59,7 +58,6 @@ function App() {
         };
     }, [room]);
 
-    // Create new room
     const createRoom = () => {
         const roomId = uuidv4();
         const newRoom = { id: roomId, name: 'New Room' };
@@ -104,9 +102,10 @@ function App() {
 
     const copyLink = (roomId) => {
         const url = `${window.location.origin}/editor?room=${roomId}`;
-        navigator.clipboard.writeText(url)
-            .then(() => alert('Link copied to clipboard!'))
-            .catch(() => alert('Failed to copy link.'));
+        navigator.clipboard.writeText(url).then(() => {
+            setCopiedRoomId(roomId);
+            setTimeout(() => setCopiedRoomId(null), 2000);
+        });
     };
 
     return (
@@ -147,7 +146,7 @@ function App() {
                                             onClick={() => copyLink(room.id)}
                                             style={{ marginLeft: '6px' }}
                                         >
-                                            Share
+                                            {copiedRoomId === room.id ? 'Copied' : 'Share'}
                                         </button>
                                         <button
                                             onClick={() => deleteRoom(room.id)}
@@ -183,7 +182,7 @@ function App() {
                             padding: '6px 12px'
                         }}
                     >
-                        🔗 Copy Share Link
+                        {copiedRoomId === room ? 'Copied' : '🔗 Copy Share Link'}
                     </button>
                     <br />
                     <textarea
