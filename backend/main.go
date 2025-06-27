@@ -17,12 +17,7 @@ func main() {
 	dbName := os.Getenv("DB_NAME")
 	dbPort := os.Getenv("DB_PORT")
 
-	connStr := fmt.Sprintf(
-		"postgres://%s@localhost:%s/%s?sslmode=disable",
-		dbUser,
-		dbPort,
-		dbName,
-	)
+	connStr := fmt.Sprintf("postgres://%s@localhost:%s/%s?sslmode=disable", dbUser, dbPort, dbName)
 
 	db, err := sql.Open("postgres", connStr)
 	if err != nil {
