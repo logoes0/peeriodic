@@ -13,6 +13,10 @@ func SetupRoutes(db *sql.DB) {
 		handlers.HandleRooms(w, r, db)
 	}) // GET (list), POST (create)
 	http.HandleFunc("/api/rooms/", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodDelete {
+			handlers.DeleteRoom(w, r, db)
+			return
+		}
 		handlers.HandleRoomByID(w, r, db)
 	}) // GET (by ID)
 }

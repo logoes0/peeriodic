@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
+	"strings"
 	"sync"
 
 	"github.com/google/uuid"
@@ -186,4 +187,25 @@ func HandleRoomByID(w http.ResponseWriter, r *http.Request, db *sql.DB) {
 		"title":   title,
 		"content": content,
 	})
+}
+
+func DeleteRoom(w http.ResponseWriter, r *http.Request, db *sql.DB) {
+	if r.Method != http.MethodDelete {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	roomID := strings.TrimPrefix(r.URL.Path, "/api/rooms/")
+	if roomID == "" {
+		http.Error(w, "Missing room ID", http.StatusBadRequest)
+		return
+	}
+
+	_, err := db.Exec("DELETE FROM rooms WHERE id = $1", roomID)
+	if err != nil {
+		http.Error(w, "Failed to delete room", http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
 }

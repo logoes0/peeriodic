@@ -6,16 +6,25 @@ function App() {
     const [document, setDocument] = useState('');
     const [socket, setSocket] = useState(null);
     const [myRooms, setMyRooms] = useState([]);
+    const [editingRoomId, setEditingRoomId] = useState(null);
+    const [editedRoomName, setEditedRoomName] = useState('');
+    const [roomName, setRoomName] = useState('');
     const params = new URLSearchParams(window.location.search);
-    const room = params.get("room");
+    const room = params.get('room');
 
-    // Load saved rooms from localStorage on first render
+    // Load saved rooms and match room name if inside one
     useEffect(() => {
-        const savedRooms = JSON.parse(localStorage.getItem("myRooms") || "[]");
+        const savedRooms = JSON.parse(localStorage.getItem('myRooms') || '[]');
         setMyRooms(savedRooms);
+
+        if (room) {
+            const matched = savedRooms.find((r) => r.id === room);
+            if (matched) setRoomName(matched.name);
+            else setRoomName('Shared Room');
+        }
     }, []);
 
-    // WebSocket setup for room
+    // WebSocket setup
     useEffect(() => {
         if (!room) return;
 
@@ -50,12 +59,13 @@ function App() {
         };
     }, [room]);
 
-    // Create a new room and save it
+    // Create new room
     const createRoom = () => {
         const roomId = uuidv4();
-        const existingRooms = JSON.parse(localStorage.getItem("myRooms") || "[]");
-        const updatedRooms = [...existingRooms, roomId];
-        localStorage.setItem("myRooms", JSON.stringify(updatedRooms));
+        const newRoom = { id: roomId, name: 'New Room' };
+        const updatedRooms = [...myRooms, newRoom];
+        localStorage.setItem('myRooms', JSON.stringify(updatedRooms));
+        setMyRooms(updatedRooms);
         window.location.href = `/editor?room=${roomId}`;
     };
 
@@ -71,6 +81,34 @@ function App() {
         }
     };
 
+    const deleteRoom = (roomIdToDelete) => {
+        const updatedRooms = myRooms.filter((room) => room.id !== roomIdToDelete);
+        setMyRooms(updatedRooms);
+        localStorage.setItem('myRooms', JSON.stringify(updatedRooms));
+    };
+
+    const startRename = (roomId, currentName) => {
+        setEditingRoomId(roomId);
+        setEditedRoomName(currentName);
+    };
+
+    const saveRename = (roomId) => {
+        const updatedRooms = myRooms.map((room) =>
+            room.id === roomId ? { ...room, name: editedRoomName } : room
+        );
+        setMyRooms(updatedRooms);
+        localStorage.setItem('myRooms', JSON.stringify(updatedRooms));
+        setEditingRoomId(null);
+        setEditedRoomName('');
+    };
+
+    const copyLink = (roomId) => {
+        const url = `${window.location.origin}/editor?room=${roomId}`;
+        navigator.clipboard.writeText(url)
+            .then(() => alert('Link copied to clipboard!'))
+            .catch(() => alert('Failed to copy link.'));
+    };
+
     return (
         <div className="App">
             {!room ? (
@@ -80,11 +118,51 @@ function App() {
 
                     {myRooms.length > 0 && (
                         <div style={{ marginTop: '20px' }}>
-                            <h2>Your Previous Rooms</h2>
+                            <h2>Your Rooms</h2>
                             <ul>
-                                {myRooms.map((roomId) => (
-                                    <li key={roomId}>
-                                        <a href={`/editor?room=${roomId}`}>{roomId}</a>
+                                {myRooms.map((room) => (
+                                    <li key={room.id} style={{ marginBottom: '6px' }}>
+                                        <a href={`/editor?room=${room.id}`}>
+                                            {editingRoomId === room.id ? (
+                                                <input
+                                                    value={editedRoomName}
+                                                    onChange={(e) => setEditedRoomName(e.target.value)}
+                                                    onBlur={() => saveRename(room.id)}
+                                                    onKeyDown={(e) => {
+                                                        if (e.key === 'Enter') saveRename(room.id);
+                                                    }}
+                                                    autoFocus
+                                                />
+                                            ) : (
+                                                room.name
+                                            )}
+                                        </a>
+                                        <button
+                                            onClick={() => startRename(room.id, room.name)}
+                                            style={{ marginLeft: '10px' }}
+                                        >
+                                            Rename
+                                        </button>
+                                        <button
+                                            onClick={() => copyLink(room.id)}
+                                            style={{ marginLeft: '6px' }}
+                                        >
+                                            Share
+                                        </button>
+                                        <button
+                                            onClick={() => deleteRoom(room.id)}
+                                            style={{
+                                                marginLeft: '6px',
+                                                color: 'white',
+                                                backgroundColor: 'red',
+                                                border: 'none',
+                                                borderRadius: '4px',
+                                                padding: '2px 6px',
+                                                cursor: 'pointer'
+                                            }}
+                                        >
+                                            Delete
+                                        </button>
                                     </li>
                                 ))}
                             </ul>
@@ -93,9 +171,19 @@ function App() {
                 </div>
             ) : (
                 <div>
-                    <h2>Room: {room}</h2>
+                    <h2>{roomName}</h2>
                     <button onClick={goBackToHome} style={{ marginBottom: '10px' }}>
                         ⬅ Back to Home
+                    </button>
+                    <button
+                        onClick={() => copyLink(room)}
+                        style={{
+                            marginBottom: '10px',
+                            marginLeft: '10px',
+                            padding: '6px 12px'
+                        }}
+                    >
+                        🔗 Copy Share Link
                     </button>
                     <br />
                     <textarea
