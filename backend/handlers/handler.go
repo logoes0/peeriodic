@@ -1,8 +1,10 @@
 package handlers
 
 import (
+	"bytes"
 	"database/sql"
 	"encoding/json"
+	"io"
 	"log"
 	"net/http"
 	"strings"
@@ -17,6 +19,12 @@ var upgrader = websocket.Upgrader{
 	CheckOrigin: func(r *http.Request) bool { return true }, // Allow CORS
 }
 
+func enableCORS(w *http.ResponseWriter) {
+	(*w).Header().Set("Access-Control-Allow-Origin", "*")
+	(*w).Header().Set("Access-Control-Allow-Methods", "POST, GET, OPTIONS, PUT, DELETE")
+	(*w).Header().Set("Access-Control-Allow-Headers", "Content-Type")
+}
+
 var (
 	clients   = make(map[*websocket.Conn]bool)
 	broadcast = make(chan models.Message)
@@ -24,67 +32,134 @@ var (
 	roomsMu   sync.Mutex
 )
 
-func HandleConnections(w http.ResponseWriter, r *http.Request) {
+func HandleConnections(w http.ResponseWriter, r *http.Request, db *sql.DB) {
+	// 1. Validate room ID
 	roomID := r.URL.Query().Get("room")
 	if roomID == "" {
 		http.Error(w, "Missing room ID", http.StatusBadRequest)
 		return
 	}
 
-	ws, err := upgrader.Upgrade(w, r, nil)
+	// 2. Verify room exists or create it
+	var content string
+	err := db.QueryRow(`
+        INSERT INTO rooms (id, content) 
+        VALUES ($1, '') 
+        ON CONFLICT (id) DO UPDATE SET id = EXCLUDED.id 
+        RETURNING content
+    `, roomID).Scan(&content)
+
 	if err != nil {
-		log.Printf("WebSocket Upgrade error: %v", err)
+		log.Printf("DB room initialization error: %v", err)
+		http.Error(w, "Database error", http.StatusInternalServerError)
 		return
 	}
-	defer ws.Close()
 
-	// Get or create the room
+	// 3. Upgrade to WebSocket
+	ws, err := upgrader.Upgrade(w, r, nil)
+	if err != nil {
+		log.Printf("WebSocket upgrade error: %v", err)
+		return
+	}
+	defer func() {
+		ws.Close()
+		log.Printf("Client disconnected from room %s", roomID)
+	}()
+
+	// 4. Initialize room state
 	roomsMu.Lock()
 	room, exists := rooms[roomID]
 	if !exists {
 		room = &models.Room{
 			Clients:  make(map[*websocket.Conn]bool),
-			Document: "", // initialize blank
+			Document: content,
 		}
 		rooms[roomID] = room
 	}
 	roomsMu.Unlock()
 
-	// Add client to the room
+	// 5. Add client and send current document
 	room.Mu.Lock()
 	room.Clients[ws] = true
-
-	// Send current document content to the new client
-	ws.WriteJSON(models.Message{Type: "init", Data: room.Document})
+	err = ws.WriteJSON(models.Message{
+		Type: "init",
+		Data: room.Document,
+	})
 	room.Mu.Unlock()
 
-	log.Println("New client connected to room:", roomID)
+	if err != nil {
+		log.Printf("Failed to send init message: %v", err)
+		return
+	}
 
+	log.Printf("New client connected to room %s (%d clients)", roomID, len(room.Clients))
+
+	// 6. Message handling loop
 	for {
 		var msg models.Message
-		err := ws.ReadJSON(&msg)
-		if err != nil {
-			log.Printf("Error reading JSON: %v", err)
-			room.Mu.Lock()
-			delete(room.Clients, ws)
-			room.Mu.Unlock()
+		if err := ws.ReadJSON(&msg); err != nil {
+			if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway) {
+				log.Printf("Client disconnected unexpectedly: %v", err)
+			} else {
+				log.Printf("Message read error: %v", err)
+			}
 			break
 		}
 
-		if msg.Type == "update" {
-			// Store new content
+		switch msg.Type {
+		case "update":
 			room.Mu.Lock()
+
+			// Update local document
 			room.Document = msg.Data
 
-			// Broadcast to all clients in the room
+			// Persist to database with transaction
+			go func(content string) {
+				tx, err := db.Begin()
+				if err != nil {
+					log.Printf("Transaction begin error: %v", err)
+					return
+				}
+				defer tx.Rollback()
+
+				if _, err := tx.Exec(`
+                    UPDATE rooms 
+                    SET content = $1, updated_at = NOW() 
+                    WHERE id = $2
+                `, content, roomID); err != nil {
+					log.Printf("DB update error: %v", err)
+					return
+				}
+
+				if err := tx.Commit(); err != nil {
+					log.Printf("Transaction commit error: %v", err)
+				}
+			}(msg.Data)
+
+			// Broadcast to other clients
 			for client := range room.Clients {
-				if client != ws { // optional: prevent echo
-					client.WriteJSON(msg)
+				if client != ws {
+					if err := client.WriteJSON(msg); err != nil {
+						log.Printf("Broadcast error: %v", err)
+						client.Close()
+						delete(room.Clients, client)
+					}
 				}
 			}
 			room.Mu.Unlock()
+
+		default:
+			log.Printf("Unknown message type: %s", msg.Type)
 		}
 	}
+
+	// 7. Clean up on disconnect
+	room.Mu.Lock()
+	delete(room.Clients, ws)
+	remaining := len(room.Clients)
+	room.Mu.Unlock()
+
+	log.Printf("Client disconnected from room %s (%d clients remaining)", roomID, remaining)
 }
 
 func HandleMessages() {
@@ -208,4 +283,93 @@ func DeleteRoom(w http.ResponseWriter, r *http.Request, db *sql.DB) {
 	}
 
 	w.WriteHeader(http.StatusNoContent)
+}
+
+func HandleSave(w http.ResponseWriter, r *http.Request, db *sql.DB) {
+	enableCORS(&w)
+	// Handle OPTIONS for preflight
+	if r.Method == "OPTIONS" {
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+
+	log.Println("Save endpoint hit") // Debug log
+
+	// 1. Validate request method
+	if r.Method != http.MethodPost {
+		log.Println("Wrong method used") // Debug log
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// 2. Get room ID
+	roomID := r.URL.Query().Get("room")
+	log.Printf("Room ID from query: %s", roomID) // Debug log
+	if roomID == "" {
+		log.Println("Missing room ID") // Debug log
+		http.Error(w, "Missing room ID", http.StatusBadRequest)
+		return
+	}
+
+	// 3. Parse request body
+	var payload struct {
+		Content string `json:"content"`
+	}
+
+	bodyBytes, _ := io.ReadAll(r.Body)
+	log.Printf("Raw request body: %s", string(bodyBytes)) // Debug log
+
+	// Reset body for decoding
+	r.Body = io.NopCloser(bytes.NewBuffer(bodyBytes))
+
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		log.Printf("JSON decode error: %v", err) // Debug log
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+	log.Printf("Parsed content length: %d", len(payload.Content)) // Debug log
+
+	// 4. Execute update
+	result, err := db.Exec("UPDATE rooms SET content = $1 WHERE id = $2", payload.Content, roomID)
+	if err != nil {
+		log.Printf("Update error: %v", err) // Debug log
+		http.Error(w, "Failed to save document", http.StatusInternalServerError)
+		return
+	}
+
+	rowsAffected, _ := result.RowsAffected()
+	log.Printf("Rows affected: %d", rowsAffected) // Debug log
+
+	// 5. Success response
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"status":        "success",
+		"roomId":        roomID,
+		"contentLength": len(payload.Content),
+	})
+}
+
+func HandleGetRoom(w http.ResponseWriter, r *http.Request, db *sql.DB) {
+	roomID := r.URL.Path[len("/api/rooms/"):]
+	if roomID == "" {
+		http.Error(w, "Missing room ID", http.StatusBadRequest)
+		return
+	}
+
+	var content string
+	err := db.QueryRow("SELECT content FROM rooms WHERE id = $1", roomID).Scan(&content)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			http.Error(w, "Room not found", http.StatusNotFound)
+		} else {
+			http.Error(w, "Database error", http.StatusInternalServerError)
+		}
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{
+		"id":      roomID,
+		"content": content,
+	})
 }
