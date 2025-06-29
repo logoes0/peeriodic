@@ -11,6 +11,8 @@ function App() {
     const [roomName, setRoomName] = useState("");
     const [copiedRoomId, setCopiedRoomId] = useState(null);
     const [isSaving, setIsSaving] = useState(false);
+    const [isLoading, setIsLoading] = useState(false);
+
     const params = new URLSearchParams(window.location.search);
     const room = params.get("room");
 
@@ -20,43 +22,67 @@ function App() {
 
         if (room) {
             const matched = savedRooms.find((r) => r.id === room);
-            if (matched) setRoomName(matched.name);
-            else setRoomName("Shared Room");
+            setRoomName(matched ? matched.name : "Shared Room");
         }
     }, []);
 
     useEffect(() => {
         if (!room) return;
 
+        const loadInitialContent = async () => {
+            setIsLoading(true);
+            try {
+                const response = await fetch(
+                    `http://localhost:5000/api/rooms/${room}`
+                );
+                if (!response.ok) throw new Error("Failed to load");
+                const data = await response.json();
+                setDocument(data.content || "");
+            } catch (error) {
+                console.error("Load error:", error);
+            } finally {
+                setIsLoading(false);
+            }
+        };
+
+        loadInitialContent();
+
         const newSocket = new WebSocket(`ws://localhost:5000/ws?room=${room}`);
         setSocket(newSocket);
 
         newSocket.onopen = () => {
-            console.log("WebSocket connection established");
+            console.log("✅ WebSocket connected");
         };
 
         newSocket.onmessage = (event) => {
             try {
-                const message = JSON.parse(event.data);
+                const message =
+                    typeof event.data === "string"
+                        ? JSON.parse(event.data)
+                        : event.data;
+
                 if (message.type === "init" || message.type === "update") {
                     setDocument(message.data);
                 }
             } catch (error) {
-                console.error("Error parsing message:", error);
+                console.error(
+                    "❌ JSON parse error:",
+                    error.message,
+                    event.data
+                );
             }
         };
 
         newSocket.onclose = () => {
-            console.log("WebSocket connection closed");
+            console.log("❌ WebSocket closed");
         };
 
         newSocket.onerror = (error) => {
-            console.error("WebSocket error:", error);
+            console.error("⚠️ WebSocket error:", error);
         };
 
-        // Auto-save every 30 seconds
         const autoSaveInterval = setInterval(() => {
-            if (document && document.trim() !== "") {
+            if (document.trim()) {
                 handleSave();
             }
         }, 30000);
@@ -91,46 +117,18 @@ function App() {
     const handleSave = async () => {
         setIsSaving(true);
         try {
-            console.log("Saving content length:", document.length);
-
             const response = await fetch(
                 `http://localhost:5000/api/save?room=${room}`,
                 {
                     method: "POST",
-                    headers: {
-                        "Content-Type": "application/json",
-                    },
-                    body: JSON.stringify({
-                        content: document,
-                    }),
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ content: document }),
                 }
             );
-
-            console.log("Response status:", response.status);
-
-            if (!response.ok) {
-                // Try to get error message from response
-                let errorMsg = "Failed to save document";
-                try {
-                    const errorData = await response.json();
-                    errorMsg = errorData.message || errorMsg;
-                } catch (e) {
-                    console.error("Error parsing error response:", e);
-                }
-                throw new Error(errorMsg);
-            }
-
-            const result = await response.json();
-            console.log("Save successful:", result);
-            alert(
-                `Document saved successfully! Content length: ${result.contentLength}`
-            );
+            if (!response.ok) throw new Error("Failed to save document");
+            await response.json();
         } catch (error) {
-            console.error("Full error details:", {
-                error: error.toString(),
-                stack: error.stack,
-            });
-            alert(`Error: ${error.message}`);
+            console.error("Save error:", error);
         } finally {
             setIsSaving(false);
         }
@@ -173,7 +171,6 @@ function App() {
                 <div>
                     <h1>Welcome to the Collaborative Editor</h1>
                     <button onClick={createRoom}>Create New Room</button>
-
                     {myRooms.length > 0 && (
                         <div style={{ marginTop: "20px" }}>
                             <h2>Your Rooms</h2>
@@ -279,14 +276,21 @@ function App() {
                     >
                         {isSaving ? "⏳ Saving..." : "💾 Save Document"}
                     </button>
-                    <br />
-                    <textarea
-                        value={document}
-                        onChange={handleChange}
-                        rows="20"
-                        cols="80"
-                        placeholder="Start typing collaboratively..."
-                    />
+                    <div>
+                        {isLoading ? (
+                            <div className="loading-indicator">
+                                Loading document...
+                            </div>
+                        ) : (
+                            <textarea
+                                value={document}
+                                onChange={handleChange}
+                                rows="20"
+                                cols="80"
+                                placeholder="Start typing collaboratively..."
+                            />
+                        )}
+                    </div>
                 </div>
             )}
         </div>

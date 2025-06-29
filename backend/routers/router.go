@@ -27,4 +27,8 @@ func SetupRoutes(db *sql.DB) {
 	http.HandleFunc("/api/save", func(w http.ResponseWriter, r *http.Request) {
 		handlers.HandleSave(w, r, db)
 	})
+
+	http.HandleFunc("/api/rooms/{id}", func(w http.ResponseWriter, r *http.Request) {
+		handlers.HandleGetRoom(w, r, db)
+	})
 }
