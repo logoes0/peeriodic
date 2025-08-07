@@ -63,6 +63,18 @@ peeriodic/
 - PostgreSQL 12+
 - Git
 
+### Quick Setup (Recommended)
+```bash
+# Run the automated setup script
+./start.sh
+```
+
+This script will:
+- Install all dependencies
+- Create the database
+- Set up environment variables
+- Provide next steps
+
 ### Backend Setup
 
 1. **Clone the repository**
@@ -74,8 +86,15 @@ peeriodic/
 2. **Set up environment variables**
    ```bash
    cd backend
-   cp .env.example .env
-   # Edit .env with your database credentials
+   # Create .env file with your database credentials
+   echo "DB_USER=your_postgres_username" > .env
+   echo "DB_PASSWORD=your_postgres_password" >> .env
+   echo "DB_NAME=peeriodic" >> .env
+   echo "DB_HOST=localhost" >> .env
+   echo "DB_PORT=5432" >> .env
+   echo "DB_SSLMODE=disable" >> .env
+   echo "PORT=5000" >> .env
+   echo "HOST=localhost" >> .env
    ```
 
 3. **Install dependencies**
@@ -84,16 +103,12 @@ peeriodic/
    ```
 
 4. **Set up database**
-   ```sql
-   CREATE DATABASE peeriodic;
-   CREATE TABLE rooms (
-     id VARCHAR(255) PRIMARY KEY,
-     title VARCHAR(255) NOT NULL,
-     content TEXT,
-     user_uid VARCHAR(255),
-     created_at TIMESTAMP DEFAULT NOW(),
-     updated_at TIMESTAMP DEFAULT NOW()
-   );
+   ```bash
+   # Create database
+   createdb peeriodic
+   
+   # Run setup script
+   psql -d peeriodic -f setup.sql
    ```
 
 5. **Run the backend**
