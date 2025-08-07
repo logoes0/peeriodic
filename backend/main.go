@@ -1,40 +1,81 @@
 package main
 
 import (
-	"database/sql"
-	"fmt"
+	"context"
 	"log"
 	"net/http"
 	"os"
+	"os/signal"
+	"syscall"
+	"time"
 
 	"github.com/joho/godotenv"
-	_ "github.com/lib/pq"
-	"github.com/logoes0/peeriodic.git/handlers"
+	"github.com/logoes0/peeriodic.git/config"
 	"github.com/logoes0/peeriodic.git/routers"
+	"github.com/logoes0/peeriodic.git/services"
 )
 
 func main() {
-	_ = godotenv.Load()
-
-	dbUser := os.Getenv("DB_USER")
-	dbName := os.Getenv("DB_NAME")
-	dbPort := os.Getenv("DB_PORT")
-
-	connStr := fmt.Sprintf("postgres://%s@localhost:%s/%s?sslmode=disable", dbUser, dbPort, dbName)
-
-	db, err := sql.Open("postgres", connStr)
-	if err != nil {
-		log.Fatal("Failed to connect to database:", err)
+	// Load environment variables
+	if err := godotenv.Load(); err != nil {
+		log.Println("⚠️  .env file not found, using system environment variables")
 	}
 
-	routers.SetupRoutes(db)
-
-	go handlers.HandleMessages()
-
-	port := ":5000"
-	log.Printf("Server listening on port %s", port)
-	err = http.ListenAndServe(port, nil)
+	// Load configuration
+	cfg, err := config.Load()
 	if err != nil {
-		log.Fatalf("Server failed: %v", err)
+		log.Fatalf("❌ Failed to load configuration: %v", err)
 	}
+
+	// Initialize database service
+	dbService, err := services.NewDatabaseService(cfg)
+	if err != nil {
+		log.Fatalf("❌ Failed to initialize database service: %v", err)
+	}
+	defer func() {
+		if err := dbService.Close(); err != nil {
+			log.Printf("⚠️  Failed to close database connection: %v", err)
+		}
+	}()
+
+	// Initialize WebSocket service
+	wsService := services.NewWebSocketService(cfg)
+
+	// Initialize router
+	router := routers.NewRouter(dbService, wsService)
+	router.SetupRoutes()
+
+	// Create HTTP server
+	server := &http.Server{
+		Addr:         cfg.GetServerAddress(),
+		ReadTimeout:  15 * time.Second,
+		WriteTimeout: 15 * time.Second,
+		IdleTimeout:  60 * time.Second,
+	}
+
+	// Start server in a goroutine
+	go func() {
+		log.Printf("🚀 Server starting on %s", cfg.GetServerAddress())
+		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			log.Fatalf("❌ Server failed to start: %v", err)
+		}
+	}()
+
+	// Wait for interrupt signal to gracefully shutdown the server
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+	<-quit
+
+	log.Println("🛑 Shutting down server...")
+
+	// Create a deadline for server shutdown
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	// Attempt graceful shutdown
+	if err := server.Shutdown(ctx); err != nil {
+		log.Printf("⚠️  Server forced to shutdown: %v", err)
+	}
+
+	log.Println("✅ Server exited gracefully")
 }
