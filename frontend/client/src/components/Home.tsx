@@ -63,7 +63,7 @@ const Home: React.FC<HomeProps> = ({ onCreateRoom, onRoomClick }) => {
   return (
     <div className="home">
       <header className="home-header">
-        <h1>Welcome to the Collaborative Editor</h1>
+        <h1>Peeriodic</h1>
         <p>Create and share documents in real-time</p>
       </header>
 
