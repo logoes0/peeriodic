@@ -1,6 +1,7 @@
 package routers
 
 import (
+	"log"
 	"net/http"
 	"strings"
 
@@ -30,8 +31,10 @@ func (r *Router) SetupRoutes() {
 	// Apply middleware to all routes
 	http.HandleFunc("/ws", middleware.Logging(middleware.CORS(r.handleWebSocket)))
 	http.HandleFunc("/api/rooms", middleware.Logging(middleware.CORS(r.handleRooms)))
-	http.HandleFunc("/api/rooms/", middleware.Logging(middleware.CORS(r.handleRoomOperations)))
 	http.HandleFunc("/api/save", middleware.Logging(middleware.CORS(r.handleSave)))
+
+	// Handle room-specific operations with path parameters
+	http.HandleFunc("/api/rooms/", middleware.Logging(middleware.CORS(r.handleRoomOperations)))
 }
 
 // handleWebSocket handles WebSocket connections
@@ -46,25 +49,39 @@ func (r *Router) handleRooms(w http.ResponseWriter, req *http.Request) {
 
 // handleRoomOperations handles room-specific operations (GET, DELETE)
 func (r *Router) handleRoomOperations(w http.ResponseWriter, req *http.Request) {
+	log.Printf("handleRoomOperations called with path: %s", req.URL.Path)
+
 	// Extract room ID from path
 	pathParts := strings.Split(req.URL.Path, "/")
+	log.Printf("Path parts: %v", pathParts)
+
 	if len(pathParts) < 4 {
+		log.Printf("Invalid path length: %d", len(pathParts))
 		http.Error(w, "Invalid room ID", http.StatusBadRequest)
 		return
 	}
 	roomID := pathParts[3]
+	log.Printf("Extracted room ID: %s", roomID)
 
 	if roomID == "" {
+		log.Printf("Empty room ID")
 		http.Error(w, "Missing room ID", http.StatusBadRequest)
 		return
 	}
 
+	// Create a new request with the room ID in the path for the handlers
+	req.URL.Path = "/api/rooms/" + roomID
+	log.Printf("Modified path: %s", req.URL.Path)
+
 	switch req.Method {
 	case http.MethodGet:
+		log.Printf("Handling GET request for room: %s", roomID)
 		r.roomHandler.HandleRoomByID(w, req)
 	case http.MethodDelete:
+		log.Printf("Handling DELETE request for room: %s", roomID)
 		r.roomHandler.HandleDeleteRoom(w, req)
 	default:
+		log.Printf("Method not allowed: %s", req.Method)
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 	}
 }

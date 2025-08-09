@@ -138,8 +138,11 @@ func (ws *WebSocketService) handleDocumentUpdate(conn *websocket.Conn, roomManag
 
 	// Persist to database asynchronously
 	go func() {
+		log.Printf("Persisting document update for room %s, content length: %d", roomManager.ID, len(content))
 		if err := dbService.UpdateRoomContent(roomManager.ID, content); err != nil {
 			log.Printf("Failed to persist document update: %v", err)
+		} else {
+			log.Printf("Successfully persisted document update for room %s", roomManager.ID)
 		}
 	}()
 }

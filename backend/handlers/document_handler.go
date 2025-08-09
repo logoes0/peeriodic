@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"encoding/json"
+	"log"
 	"net/http"
 	"strings"
 
@@ -61,11 +62,14 @@ func (dh *DocumentHandler) HandleSave(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Save document to database
+	log.Printf("Saving document for room %s, content length: %d", roomID, len(req.Content))
 	err := dh.dbService.UpdateRoomContent(roomID, req.Content)
 	if err != nil {
+		log.Printf("Failed to save document for room %s: %v", roomID, err)
 		utils.InternalServerError(w, "Failed to save document")
 		return
 	}
+	log.Printf("Successfully saved document for room %s", roomID)
 
 	response := SaveDocumentResponse{
 		Status:        "success",
@@ -113,4 +117,3 @@ func (dh *DocumentHandler) HandleGetDocument(w http.ResponseWriter, r *http.Requ
 
 	utils.SuccessResponse(w, response)
 }
-

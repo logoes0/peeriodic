@@ -13,12 +13,22 @@ type Message struct {
 	Data string `json:"data"`
 }
 
+// User represents a user in the system
+type User struct {
+	ID        int       `json:"id"`
+	UID       string    `json:"uid"`
+	Email     string    `json:"email"`
+	Name      string    `json:"name"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
 // Room represents a collaborative editing room
 type Room struct {
 	ID        string    `json:"id"`
 	Title     string    `json:"title"`
 	Content   string    `json:"content"`
-	UserUID   string    `json:"user_uid,omitempty"`
+	UserUID   *string   `json:"user_uid,omitempty"` // Changed to pointer to handle NULL values
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
 	Clients   map[*websocket.Conn]bool
@@ -26,7 +36,7 @@ type Room struct {
 }
 
 // NewRoom creates a new room instance
-func NewRoom(id, title, userUID string) *Room {
+func NewRoom(id, title string, userUID *string) *Room {
 	return &Room{
 		ID:        id,
 		Title:     title,

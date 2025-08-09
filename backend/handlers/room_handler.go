@@ -26,6 +26,8 @@ func NewRoomHandler(dbService *services.DatabaseService) *RoomHandler {
 type CreateRoomRequest struct {
 	Title string `json:"title"`
 	UID   string `json:"uid"`
+	Email string `json:"email,omitempty"`
+	Name  string `json:"name,omitempty"`
 }
 
 // RoomResponse represents a room in API responses
@@ -33,6 +35,7 @@ type RoomResponse struct {
 	ID        string `json:"id"`
 	Title     string `json:"title"`
 	Content   string `json:"content,omitempty"`
+	UserUID   string `json:"user_uid,omitempty"`
 	CreatedAt string `json:"created_at,omitempty"`
 }
 
@@ -65,11 +68,15 @@ func (rh *RoomHandler) handleGetRooms(w http.ResponseWriter, r *http.Request) {
 	// Convert to response format
 	var response []RoomResponse
 	for _, room := range rooms {
-		response = append(response, RoomResponse{
+		roomResponse := RoomResponse{
 			ID:        room.ID,
 			Title:     room.Title,
 			CreatedAt: room.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
-		})
+		}
+		if room.UserUID != nil {
+			roomResponse.UserUID = *room.UserUID
+		}
+		response = append(response, roomResponse)
 	}
 
 	utils.SuccessResponse(w, response)
@@ -92,8 +99,19 @@ func (rh *RoomHandler) handleCreateRoom(w http.ResponseWriter, r *http.Request) 
 		req.Title = "Untitled Room"
 	}
 
+	// Ensure user exists
+	var userUID *string
+	if req.UID != "" {
+		user, err := rh.DBService.EnsureUserExists(req.UID, req.Email, req.Name)
+		if err != nil {
+			utils.InternalServerError(w, "Failed to create user")
+			return
+		}
+		userUID = &user.UID
+	}
+
 	roomID := uuid.New().String()
-	room, err := rh.DBService.CreateRoom(roomID, req.Title, req.UID)
+	room, err := rh.DBService.CreateRoom(roomID, req.Title, userUID)
 	if err != nil {
 		utils.InternalServerError(w, "Failed to create room")
 		return
@@ -102,6 +120,9 @@ func (rh *RoomHandler) handleCreateRoom(w http.ResponseWriter, r *http.Request) 
 	response := RoomResponse{
 		ID:    room.ID,
 		Title: room.Title,
+	}
+	if room.UserUID != nil {
+		response.UserUID = *room.UserUID
 	}
 
 	utils.SuccessResponse(w, response)
@@ -141,6 +162,9 @@ func (rh *RoomHandler) HandleRoomByID(w http.ResponseWriter, r *http.Request) {
 		ID:      room.ID,
 		Title:   room.Title,
 		Content: room.Content,
+	}
+	if room.UserUID != nil {
+		response.UserUID = *room.UserUID
 	}
 
 	utils.SuccessResponse(w, response)
