@@ -35,39 +35,89 @@ func NewWebSocketService(cfg *config.Config) *WebSocketService {
 
 // GetUpgrader returns a configured WebSocket upgrader
 func (ws *WebSocketService) GetUpgrader() websocket.Upgrader {
+	log.Printf("🔧 Creating WebSocket upgrader with config: ReadBuffer=%d, WriteBuffer=%d",
+		ws.config.WebSocket.ReadBufferSize, ws.config.WebSocket.WriteBufferSize)
+
 	return websocket.Upgrader{
 		ReadBufferSize:  ws.config.WebSocket.ReadBufferSize,
 		WriteBufferSize: ws.config.WebSocket.WriteBufferSize,
 		CheckOrigin: func(r *http.Request) bool {
-			return ws.config.WebSocket.CheckOrigin
+			// For development, allow all origins
+			// In production, you might want to restrict this
+			origin := r.Header.Get("Origin")
+			log.Printf("🔍 Checking origin: %s", origin)
+			log.Printf("🔍 Allowing origin: %s", origin)
+			return true
 		},
+		// Enable compression for better performance
+		EnableCompression: true,
 	}
 }
 
 // HandleConnection handles a new WebSocket connection
 func (ws *WebSocketService) HandleConnection(w http.ResponseWriter, r *http.Request, dbService *DatabaseService) {
+	// Basic request logging (replacing middleware.Logging)
+	log.Printf("🌐 WebSocket request: %s %s from %s", r.Method, r.URL.Path, r.RemoteAddr)
+
+	// Add panic recovery
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("❌ PANIC in WebSocket handler: %v", r)
+			http.Error(w, "Internal server error", http.StatusInternalServerError)
+		}
+	}()
+
+	// Set CORS headers for WebSocket connections
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+	w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+	w.Header().Set("Access-Control-Max-Age", "86400")
+
+	// Handle preflight OPTIONS request
+	if r.Method == "OPTIONS" {
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+
 	// Extract room ID from query parameters
 	roomID := r.URL.Query().Get("room")
 	if roomID == "" {
+		log.Printf("❌ WebSocket connection attempt without room ID")
 		http.Error(w, "Missing room ID", http.StatusBadRequest)
 		return
 	}
 
+	log.Printf("🔌 WebSocket connection attempt for room: %s", roomID)
+
 	// Ensure room exists in database
 	room, err := dbService.EnsureRoomExists(roomID)
 	if err != nil {
-		log.Printf("Failed to ensure room exists: %v", err)
+		log.Printf("❌ Failed to ensure room exists: %v", err)
 		http.Error(w, "Database error", http.StatusInternalServerError)
 		return
 	}
 
+	log.Printf("✅ Room validated, upgrading to WebSocket for room: %s", roomID)
+
 	// Upgrade HTTP connection to WebSocket
 	upgrader := ws.GetUpgrader()
+	log.Printf("🔧 Upgrader created, attempting upgrade for room: %s", roomID)
+
+	// Log request headers for debugging
+	log.Printf("🔍 Request headers: %v", r.Header)
+	log.Printf("🔍 Request method: %s", r.Method)
+	log.Printf("🔍 Request URL: %s", r.URL.String())
+
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
-		log.Printf("WebSocket upgrade failed: %v", err)
+		log.Printf("❌ WebSocket upgrade failed for room %s: %v", roomID, err)
+		log.Printf("❌ Upgrade error details: %T", err)
+		// Try to send a more detailed error response
+		http.Error(w, "WebSocket upgrade failed", http.StatusInternalServerError)
 		return
 	}
+
+	log.Printf("✅ WebSocket upgrade successful for room: %s", roomID)
 	defer ws.closeConnection(conn, roomID)
 
 	// Get or create room manager
@@ -79,16 +129,18 @@ func (ws *WebSocketService) HandleConnection(w http.ResponseWriter, r *http.Requ
 	clientCount := len(roomManager.Clients)
 	roomManager.mu.Unlock()
 
-	log.Printf("Client connected to room %s (total clients: %d)", roomID, clientCount)
+	log.Printf("✅ Client connected to room %s (total clients: %d)", roomID, clientCount)
 
 	// Send initial document state to new client
 	if err := conn.WriteJSON(models.Message{
 		Type: "init",
 		Data: roomManager.Document,
 	}); err != nil {
-		log.Printf("Failed to send initial document: %v", err)
+		log.Printf("❌ Failed to send initial document: %v", err)
 		return
 	}
+
+	log.Printf("✅ Initial document sent to client in room: %s", roomID)
 
 	// Handle incoming messages
 	ws.handleMessages(conn, roomManager, dbService)
@@ -96,22 +148,30 @@ func (ws *WebSocketService) HandleConnection(w http.ResponseWriter, r *http.Requ
 
 // handleMessages processes incoming WebSocket messages
 func (ws *WebSocketService) handleMessages(conn *websocket.Conn, roomManager *RoomManager, dbService *DatabaseService) {
+	log.Printf("🔄 Starting message handling for room: %s", roomManager.ID)
+
 	for {
 		var msg models.Message
 		if err := conn.ReadJSON(&msg); err != nil {
 			if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
-				log.Printf("Client disconnected unexpectedly: %v", err)
+				log.Printf("❌ Client disconnected unexpectedly from room %s: %v", roomManager.ID, err)
+			} else {
+				log.Printf("📖 Client disconnected normally from room %s: %v", roomManager.ID, err)
 			}
 			break
 		}
+
+		log.Printf("📨 Received message in room %s: type=%s, data_length=%d", roomManager.ID, msg.Type, len(msg.Data))
 
 		switch msg.Type {
 		case "update":
 			ws.handleDocumentUpdate(conn, roomManager, msg.Data, dbService)
 		default:
-			log.Printf("Unknown message type: %s", msg.Type)
+			log.Printf("⚠️ Unknown message type '%s' in room %s", msg.Type, roomManager.ID)
 		}
 	}
+
+	log.Printf("🔄 Message handling ended for room: %s", roomManager.ID)
 }
 
 // handleDocumentUpdate processes document update messages

@@ -28,8 +28,10 @@ func NewRouter(dbService *services.DatabaseService, wsService *services.WebSocke
 
 // SetupRoutes configures all application routes with middleware
 func (r *Router) SetupRoutes() {
-	// Apply middleware to all routes
-	http.HandleFunc("/ws", middleware.Logging(middleware.CORS(r.handleWebSocket)))
+	// WebSocket endpoint - NO middleware (WebSocket needs direct access to response writer)
+	http.HandleFunc("/ws", r.handleWebSocket)
+
+	// HTTP API endpoints - apply CORS middleware
 	http.HandleFunc("/api/rooms", middleware.Logging(middleware.CORS(r.handleRooms)))
 	http.HandleFunc("/api/save", middleware.Logging(middleware.CORS(r.handleSave)))
 
