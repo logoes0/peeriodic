@@ -12,16 +12,39 @@ class WebSocketService {
   private messageHandlers: MessageHandler[] = [];
   private connectionHandlers: ConnectionHandler[] = [];
   private errorHandlers: ErrorHandler[] = [];
+  private currentRoomId: string | null = null;
+  private isConnecting = false;
 
   connect(roomId: string): Promise<void> {
     return new Promise((resolve, reject) => {
       try {
-        const wsUrl = `ws://localhost:5000/ws?room=${roomId}`;
+        // Disconnect existing connection if any
+        if (this.socket) {
+          this.socket.close();
+          this.socket = null;
+        }
+
+        if (this.isConnecting) {
+          reject(new Error('Connection already in progress'));
+          return;
+        }
+
+        this.isConnecting = true;
+        
+        // Construct WebSocket URL - use the same host as the current page but with the backend port
+        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        const host = window.location.hostname;
+        const port = '5000'; // Backend port is always 5000
+        const wsUrl = `${protocol}//${host}:${port}/ws?room=${roomId}`;
+        
+        console.log('🔌 Connecting to WebSocket:', wsUrl);
         this.socket = new WebSocket(wsUrl);
+        this.currentRoomId = roomId;
 
         this.socket.onopen = () => {
-          console.log('✅ WebSocket connected');
+          console.log('✅ WebSocket connected to room:', roomId);
           this.reconnectAttempts = 0;
+          this.isConnecting = false;
           this.connectionHandlers.forEach(handler => handler());
           resolve();
         };
@@ -29,6 +52,7 @@ class WebSocketService {
         this.socket.onmessage = (event) => {
           try {
             const message: WebSocketMessage = JSON.parse(event.data);
+            console.log('📨 Received WebSocket message:', message);
             this.messageHandlers.forEach(handler => handler(message));
           } catch (error) {
             console.error('❌ Failed to parse WebSocket message:', error);
@@ -37,15 +61,20 @@ class WebSocketService {
 
         this.socket.onclose = (event) => {
           console.log('❌ WebSocket closed:', event.code, event.reason);
-          this.handleReconnect(roomId);
+          this.isConnecting = false;
+          if (this.currentRoomId === roomId) {
+            this.handleReconnect(roomId);
+          }
         };
 
         this.socket.onerror = (error) => {
           console.error('⚠️ WebSocket error:', error);
+          this.isConnecting = false;
           this.errorHandlers.forEach(handler => handler(error));
           reject(error);
         };
       } catch (error) {
+        this.isConnecting = false;
         reject(error);
       }
     });
@@ -68,13 +97,17 @@ class WebSocketService {
 
   disconnect() {
     if (this.socket) {
+      console.log('🔌 Disconnecting WebSocket');
       this.socket.close();
       this.socket = null;
+      this.currentRoomId = null;
+      this.isConnecting = false;
     }
   }
 
   send(message: WebSocketMessage) {
     if (this.socket && this.socket.readyState === WebSocket.OPEN) {
+      console.log('📤 Sending WebSocket message:', message);
       this.socket.send(JSON.stringify(message));
     } else {
       console.warn('⚠️ WebSocket is not connected');
@@ -96,9 +129,15 @@ class WebSocketService {
   isConnected(): boolean {
     return this.socket?.readyState === WebSocket.OPEN;
   }
+
+  // Clear all handlers (useful for cleanup)
+  clearHandlers() {
+    this.messageHandlers = [];
+    this.connectionHandlers = [];
+    this.errorHandlers = [];
+  }
 }
 
-// Export singleton instance
-export const wsService = new WebSocketService();
+const wsService = new WebSocketService();
 export default wsService;
 

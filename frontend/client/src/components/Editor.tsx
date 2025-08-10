@@ -17,9 +17,12 @@ const Editor: React.FC<EditorProps> = ({ roomId, roomName, onBack, onShare }) =>
   const [document, setDocument] = useState('');
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
-  const [isConnected, setIsConnected] = useState(false);
   const [copiedRoomId, setCopiedRoomId] = useState<string | null>(null);
   const autoSaveIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const lastUpdateRef = useRef<string>('');
+  const isLocalUpdateRef = useRef<boolean>(false);
+  const lastSentContentRef = useRef<string>('');
+  const wsConnectedRef = useRef<boolean>(false);
 
   // Load initial document content
   useEffect(() => {
@@ -27,7 +30,10 @@ const Editor: React.FC<EditorProps> = ({ roomId, roomName, onBack, onShare }) =>
       try {
         setIsLoading(true);
         const response = await apiService.getDocument(roomId);
-        setDocument(response.content || '');
+        const content = response.content || '';
+        setDocument(content);
+        lastUpdateRef.current = content;
+        lastSentContentRef.current = content;
       } catch (error) {
         console.error('Failed to load document:', error);
       } finally {
@@ -40,36 +46,59 @@ const Editor: React.FC<EditorProps> = ({ roomId, roomName, onBack, onShare }) =>
 
   // Setup WebSocket connection
   useEffect(() => {
+    let isActive = true;
+
     const setupWebSocket = async () => {
       try {
+        // Clear any existing handlers
+        wsService.clearHandlers();
+        
         await wsService.connect(roomId);
-        setIsConnected(true);
+        
+        if (!isActive) return;
 
+        wsConnectedRef.current = true;
+
+        // Set up message handler
         wsService.onMessage((message: WebSocketMessage) => {
+          if (!isActive) return;
+          
+          console.log('Editor received message:', message);
           if (message.type === 'init' || message.type === 'update') {
-            setDocument(message.data);
+            // Only update if this is not a local update and content is different
+            if (!isLocalUpdateRef.current && message.data !== lastUpdateRef.current) {
+              console.log('🔄 Updating document from WebSocket:', message.data.substring(0, 50) + '...');
+              setDocument(message.data);
+              lastUpdateRef.current = message.data;
+              lastSentContentRef.current = message.data;
+            }
           }
         });
 
         wsService.onConnect(() => {
-          setIsConnected(true);
+          if (!isActive) return;
+          console.log('WebSocket connected in Editor');
+          wsConnectedRef.current = true;
         });
 
         wsService.onError((error) => {
-          console.error('WebSocket error:', error);
-          setIsConnected(false);
+          if (!isActive) return;
+          console.error('WebSocket error in Editor:', error);
+          wsConnectedRef.current = false;
         });
       } catch (error) {
+        if (!isActive) return;
         console.error('Failed to connect WebSocket:', error);
-        setIsConnected(false);
+        wsConnectedRef.current = false;
       }
     };
 
     setupWebSocket();
 
     return () => {
+      isActive = false;
+      wsConnectedRef.current = false;
       wsService.disconnect();
-      setIsConnected(false);
     };
   }, [roomId]);
 
@@ -90,14 +119,25 @@ const Editor: React.FC<EditorProps> = ({ roomId, roomName, onBack, onShare }) =>
 
   const handleDocumentChange = useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
     const newContent = e.target.value;
+    
+    // Update local state immediately
     setDocument(newContent);
-
-    // Send update via WebSocket
-    if (wsService.isConnected()) {
+    
+    // Only send WebSocket update if content has actually changed and we're connected
+    if (wsConnectedRef.current && newContent !== lastSentContentRef.current) {
+      isLocalUpdateRef.current = true;
+      lastSentContentRef.current = newContent;
+      
+      console.log('📤 Sending document update via WebSocket');
       wsService.send({
         type: 'update',
         data: newContent,
       });
+
+      // Reset the flag after a longer delay to account for network latency
+      setTimeout(() => {
+        isLocalUpdateRef.current = false;
+      }, 1000); // Increased timeout to 1 second
     }
   }, []);
 
@@ -131,9 +171,6 @@ const Editor: React.FC<EditorProps> = ({ roomId, roomName, onBack, onShare }) =>
       <header className="editor-header">
         <div className="editor-title">
           <h2>{roomName}</h2>
-          <div className="connection-status">
-            {isConnected ? '🟢 Connected' : '🔴 Disconnected'}
-          </div>
         </div>
 
         <div className="editor-actions">

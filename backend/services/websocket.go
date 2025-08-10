@@ -119,30 +119,40 @@ func (ws *WebSocketService) handleDocumentUpdate(conn *websocket.Conn, roomManag
 	roomManager.mu.Lock()
 	defer roomManager.mu.Unlock()
 
+	log.Printf("📝 Processing document update for room %s, content length: %d", roomManager.ID, len(content))
+
 	// Update local document state
 	roomManager.Document = content
 
 	// Broadcast to other clients in the room
+	clientCount := 0
 	for client := range roomManager.Clients {
 		if client != conn {
-			if err := client.WriteJSON(models.Message{
+			clientCount++
+			log.Printf("📤 Broadcasting to client in room %s", roomManager.ID)
+			message := models.Message{
 				Type: "update",
 				Data: content,
-			}); err != nil {
-				log.Printf("Failed to broadcast to client: %v", err)
+			}
+			if err := client.WriteJSON(message); err != nil {
+				log.Printf("❌ Failed to broadcast to client: %v", err)
 				client.Close()
 				delete(roomManager.Clients, client)
+			} else {
+				log.Printf("✅ Successfully broadcasted to client in room %s", roomManager.ID)
 			}
 		}
 	}
 
+	log.Printf("📊 Broadcasted update to %d clients in room %s", clientCount, roomManager.ID)
+
 	// Persist to database asynchronously
 	go func() {
-		log.Printf("Persisting document update for room %s, content length: %d", roomManager.ID, len(content))
+		log.Printf("💾 Persisting document update for room %s, content length: %d", roomManager.ID, len(content))
 		if err := dbService.UpdateRoomContent(roomManager.ID, content); err != nil {
-			log.Printf("Failed to persist document update: %v", err)
+			log.Printf("❌ Failed to persist document update: %v", err)
 		} else {
-			log.Printf("Successfully persisted document update for room %s", roomManager.ID)
+			log.Printf("✅ Successfully persisted document update for room %s", roomManager.ID)
 		}
 	}()
 }
